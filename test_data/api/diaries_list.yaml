@@ -1,0 +1,98 @@
+cases:
+  - id: default_pagination
+    title: 默认分页参数
+    params: {}
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: custom_pagination
+    title: 自定义页码和每页数量
+    params:
+      page: 2
+      pageSize: 3
+    expected_status: 200
+    expected_fields:
+      page: 2
+      pageSize: 3
+
+  - id: page_zero_fallback
+    title: page 为 0 时回退到第一页
+    params:
+      page: 0
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: page_negative_fallback
+    title: page 为负数时回退到第一页
+    params:
+      page: -2
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: page_size_zero_fallback
+    title: pageSize 为 0 时回退到默认值
+    params:
+      pageSize: 0
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: page_size_negative_fallback
+    title: pageSize 为负数时回退到默认值
+    params:
+      pageSize: -5
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: non_numeric_params_fallback
+    title: 非数字分页参数回退到默认值
+    params:
+      page: "abc"
+      pageSize: "xyz"
+    expected_status: 200
+    expected_fields:
+      page: 1
+      pageSize: 10
+
+  - id: page_size_min_boundary
+    title: pageSize 最小边界值
+    params:
+      pageSize: 1
+    expected_status: 200
+    expected_fields:
+      pageSize: 1
+
+  - id: page_size_max_boundary
+    title: pageSize 最大边界值
+    params:
+      pageSize: 100
+    expected_status: 200
+    expected_fields:
+      pageSize: 100
+
+  - id: page_size_over_max_clamped
+    title: pageSize 超过上限时钳制为 100
+    params:
+      pageSize: 1000
+    expected_status: 200
+    expected_fields:
+      pageSize: 100
+
+  - id: page_beyond_total
+    title: 页码超过总页数时返回空列表
+    params:
+      page: 999999
+      pageSize: 10
+    expected_status: 200
+    expected_fields:
+      page: 999999
+      items: []

@@ -1,115 +1,119 @@
-"""GET /api/diaries 查询接口用例：覆盖正常、筛选、边界和异常入参。"""
+"""GET /api/diaries 查询接口用例：YAML 数据驱动 + Python 动态场景。"""
 
+import allure
 import pytest
 
 from api.client import DiaryApiClient
 from api.schemas import Diary, DiaryPage
+from api.yaml_loader import QueryCase, load_query_cases
+
+pytestmark = pytest.mark.api
+
+LIST_CASES = load_query_cases("diaries_list.yaml")
 
 
-def test_list_uses_default_pagination(api_client: DiaryApiClient) -> None:
-    """不带参数时使用默认分页 page=1、pageSize=10。"""
-    page = api_client.list_diaries_parsed()
-    assert page.page == 1
-    assert page.pageSize == 10
-    assert page.total > 0
-    assert len(page.items) <= 10
+@pytest.mark.parametrize("case", LIST_CASES, ids=[case.id for case in LIST_CASES])
+def test_list_query_cases(api_client: DiaryApiClient, case: QueryCase) -> None:
+    """执行 YAML 中的稳定查询入参，验证状态码和简单预期字段。"""
+    allure.dynamic.title(case.title)
+
+    with allure.step("发送查询请求"):
+        response = api_client.list_diaries(**case.params)
+
+    with allure.step("校验状态码"):
+        assert response.status_code == case.expected_status
+
+    with allure.step("校验响应模型和预期字段"):
+        page = DiaryPage.model_validate(response.json())
+        for field_name, expected_value in case.expected_fields.items():
+            assert getattr(page, field_name) == expected_value
+        assert page.total >= len(page.items)
+        assert len(page.items) <= page.pageSize
 
 
-def test_list_with_custom_page_and_page_size(api_client: DiaryApiClient) -> None:
-    """自定义 page/pageSize 后按指定分页返回。"""
-    page = api_client.list_diaries_parsed(page=2, pageSize=3)
-    assert page.page == 2
-    assert page.pageSize == 3
-    assert 0 <= len(page.items) <= 3
-
-
-@pytest.mark.parametrize(
-    "params, expected_page, expected_page_size",
-    [
-        ({"page": 0}, 1, 10),
-        ({"page": -2}, 1, 10),
-        ({"pageSize": 0}, 1, 10),
-        ({"pageSize": -5}, 1, 10),
-        ({"page": "abc", "pageSize": "xyz"}, 1, 10),
-    ],
-)
-def test_list_invalid_numbers_fall_back(
+def test_list_filter_by_submitter(
     api_client: DiaryApiClient,
-    params: dict,
-    expected_page: int,
-    expected_page_size: int,
+    created_diary: Diary,
 ) -> None:
-    """非法或越界的页码/页大小回退到默认值。"""
-    page = api_client.list_diaries_parsed(**params)
-    assert page.page == expected_page
-    assert page.pageSize == expected_page_size
-
-
-@pytest.mark.parametrize("page_size", [1, 100])
-def test_list_page_size_allowed_boundaries(api_client: DiaryApiClient, page_size: int) -> None:
-    """pageSize 最小值和最大值可直接使用。"""
-    page = api_client.list_diaries_parsed(pageSize=page_size)
-    assert page.pageSize == page_size
-    assert len(page.items) <= page_size
-
-
-def test_list_page_size_over_max_is_clamped(api_client: DiaryApiClient) -> None:
-    """pageSize 超过 100 时被钳制到 100。"""
-    page = api_client.list_diaries_parsed(pageSize=1000)
-    assert page.pageSize == 100
-    assert len(page.items) <= 100
-
-
-def test_list_page_beyond_total_returns_empty_items(api_client: DiaryApiClient) -> None:
-    """查询远超数据量的页码时返回空列表。"""
-    page = api_client.list_diaries_parsed(page=999999, pageSize=10)
-    assert page.page == 999999
-    assert page.items == []
-
-
-def test_list_filter_by_submitter(api_client: DiaryApiClient, created_diary: Diary) -> None:
     """按提交人关键字筛选。"""
+    allure.dynamic.title("按提交人筛选日记")
     keyword = created_diary.submitter.rsplit("-", 1)[-1]
-    page = api_client.list_diaries_parsed(submitter=keyword)
-    assert page.total >= 1
-    assert all(keyword in item.submitter for item in page.items)
+
+    with allure.step(f"查询提交人关键字 {keyword}"):
+        page = api_client.list_diaries_parsed(submitter=keyword)
+
+    with allure.step("校验筛选结果"):
+        assert page.total >= 1
+        assert all(keyword in item.submitter for item in page.items)
 
 
-def test_list_filter_by_content(api_client: DiaryApiClient, created_diary: Diary) -> None:
+def test_list_filter_by_content(
+    api_client: DiaryApiClient,
+    created_diary: Diary,
+) -> None:
     """按内容关键字筛选。"""
+    allure.dynamic.title("按内容筛选日记")
     keyword = created_diary.content.rsplit("-", 1)[-1]
-    page = api_client.list_diaries_parsed(content=keyword)
-    assert page.total >= 1
-    assert all(keyword in item.content for item in page.items)
+
+    with allure.step(f"查询内容关键字 {keyword}"):
+        page = api_client.list_diaries_parsed(content=keyword)
+
+    with allure.step("校验筛选结果"):
+        assert page.total >= 1
+        assert all(keyword in item.content for item in page.items)
 
 
-def test_list_filter_by_submit_time_range(api_client: DiaryApiClient, created_diary: Diary) -> None:
+def test_list_filter_by_submit_time_range(
+    api_client: DiaryApiClient,
+    created_diary: Diary,
+) -> None:
     """按提交时间区间筛选。"""
+    allure.dynamic.title("按提交时间区间筛选日记")
     start = created_diary.submitTime - 1
     end = created_diary.submitTime + 1
-    page = api_client.list_diaries_parsed(submitStart=start, submitEnd=end)
-    assert page.total >= 1
-    assert any(item.id == created_diary.id for item in page.items)
+
+    with allure.step("查询提交时间区间"):
+        page = api_client.list_diaries_parsed(submitStart=start, submitEnd=end)
+
+    with allure.step("校验目标日记在结果中"):
+        assert page.total >= 1
+        assert any(item.id == created_diary.id for item in page.items)
 
 
-def test_list_filter_by_modify_time_range(api_client: DiaryApiClient, created_diary: Diary) -> None:
+def test_list_filter_by_modify_time_range(
+    api_client: DiaryApiClient,
+    created_diary: Diary,
+) -> None:
     """按修改时间区间筛选。"""
+    allure.dynamic.title("按修改时间区间筛选日记")
     start = created_diary.modifyTime - 1
     end = created_diary.modifyTime + 1
-    page = api_client.list_diaries_parsed(modifyStart=start, modifyEnd=end)
-    assert page.total >= 1
-    assert any(item.id == created_diary.id for item in page.items)
+
+    with allure.step("查询修改时间区间"):
+        page = api_client.list_diaries_parsed(modifyStart=start, modifyEnd=end)
+
+    with allure.step("校验目标日记在结果中"):
+        assert page.total >= 1
+        assert any(item.id == created_diary.id for item in page.items)
 
 
-def test_list_combine_filters(api_client: DiaryApiClient, created_diary: Diary) -> None:
+def test_list_combine_filters(
+    api_client: DiaryApiClient,
+    created_diary: Diary,
+) -> None:
     """提交人、内容、时间区间组合筛选。"""
+    allure.dynamic.title("组合条件筛选日记")
     keyword = created_diary.submitter.rsplit("-", 1)[-1]
-    page = api_client.list_diaries_parsed(
-        submitter=keyword,
-        content=keyword,
-        submitStart=created_diary.submitTime - 1,
-        submitEnd=created_diary.submitTime + 1,
-        pageSize=100,
-    )
-    assert page.total >= 1
-    assert all(item.id == created_diary.id for item in page.items)
+
+    with allure.step("发送组合条件查询"):
+        page = api_client.list_diaries_parsed(
+            submitter=keyword,
+            content=keyword,
+            submitStart=created_diary.submitTime - 1,
+            submitEnd=created_diary.submitTime + 1,
+            pageSize=100,
+        )
+
+    with allure.step("校验仅命中目标日记"):
+        assert page.total >= 1
+        assert all(item.id == created_diary.id for item in page.items)

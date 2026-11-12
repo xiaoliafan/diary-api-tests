@@ -4,10 +4,18 @@ import os
 import uuid
 from collections.abc import Callable
 
+import allure
 import pytest
 
 from api.client import DiaryApiClient
 from api.schemas import Diary
+
+
+@pytest.fixture(autouse=True)
+def allure_labels(request: pytest.FixtureRequest) -> None:
+    """为所有接口用例补充 Allure 的 feature 和 story 标签。"""
+    allure.dynamic.feature("日记平台接口")
+    allure.dynamic.story(request.module.__name__.rsplit(".", 1)[-1])
 
 
 @pytest.fixture(scope="session")
